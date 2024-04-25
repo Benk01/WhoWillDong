@@ -1,6 +1,11 @@
 // Import the functions you need from the SDKs you need
-import firebase from 'firebase/app';
-import 'firebase/functions'; // If you need to use Cloud Functions
+import { initializeApp } from "firebase/app";
+import { getReactNativePersistence, initializeAuth, } from '@firebase/auth/dist/rn/index.js';
+import ReactNativeAsyncStorage from "@react-native-async-storage/async-storage";
+
+
+
+// If you need to use Cloud Functions
 // TODO: Add SDKs for Firebase products that you want to use
 // https://firebase.google.com/docs/web/setup#available-libraries
 
@@ -16,10 +21,10 @@ const firebaseConfig = {
     measurementId: "G-2SG7Z3V0L3"
 };
 
-if (!firebase.apps.length) {
-    firebase.initializeApp(firebaseConfig);
-} else {
-    firebase.app(); // if already initialized, use that one
-}
+const app = initializeApp(firebaseConfig);
+initializeAuth(app, {
+    persistence: getReactNativePersistence(ReactNativeAsyncStorage)
+});
 
-export default firebase;
+export default app;
+

@@ -1,66 +1,95 @@
 import React, { Fragment, useState, useEffect } from 'react';
-import { FlatList, Text, View, StyleSheet, Dimensions, useWindowDimensions, Image, TouchableOpacity, SafeAreaView, ScrollView, Modal, Platform, StatusBar, } from 'react-native';
+import { FlatList, Text, View, StyleSheet, Dimensions, useWindowDimensions, Image, TouchableOpacity, SafeAreaView, ScrollView, Modal, Platform, StatusBar, TouchableWithoutFeedback, } from 'react-native';
 import Snackbar from 'react-native-snackbar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { TabView, SceneMap, TabBar } from 'react-native-tab-view';
-import firebase from './firebaseConfig';
+import { FontAwesome } from '@expo/vector-icons';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
+import {
+  doc,
+  setDoc,
+  deleteDoc,
+  collection,
+  updateDoc,
+  getDoc,
+  getDocs,
+  query,
+  Timestamp,
+  getFirestore
+} from "firebase/firestore";
+import app from './firebaseConfig';
+import LoginRegisterModal from './components/LoginRegisterModal';
+import HelpModal from './components/HelpModal';
+import { getAuth } from 'firebase/auth';
+import ProfileModal from './components/ProfileModal';
+import useUserData from './components/UserData';
 
 
-interface PlayerData {
-  id: string;
-  name: string;
-  team: string;
-  starter: string;
-  versus: string;
-  home_runs: string;
+interface MatchupData {
+  id: string,
+  probabilityClass0: number;
+  probabilityClass1: number;
+  batterId: number;
+  batterAbr: string;
+  batterName: string;
+  hr_2023: number;
+  hr_2024: number;
+  hr_last10: number;
   stand: string;
   p_throws: string;
+  pitcherId: number;
+  pitcherAbr: string;
+  pitcherName: string;
 }
+
 
 interface TeamLogos {
   [key: string]: any; // Image source type or any other appropriate type
 }
 
-let data: PlayerData[] = [
-  { id: '1', name: 'Rafael Devers', team: 'BOS', starter: 'Gerrit Cole', versus: 'NYY', home_runs: '12', stand: 'R', p_throws: 'L' },
-  { id: '2', name: 'Cal Raleigh', team: 'SEA', starter: 'Brayan Bello', versus: 'ATL', home_runs: '8', stand: 'R', p_throws: 'L' },
-  { id: '3', name: 'Aaron Judge', team: 'NYY', starter: 'Nester Cortez', versus: 'TEX', home_runs: '3', stand: 'R', p_throws: 'L' },
-  { id: '4', name: 'Rafael Devers', team: 'BOS', starter: 'Gerrit Cole', versus: 'NYY', home_runs: '12', stand: 'R', p_throws: 'L' },
-  { id: '5', name: 'Cal Raleigh', team: 'SEA', starter: 'Brayan Bello', versus: 'ATL', home_runs: '8', stand: 'R', p_throws: 'L' },
-  { id: '6', name: 'Aaron Judge', team: 'NYY', starter: 'Nester Cortez', versus: 'TEX', home_runs: '3', stand: 'R', p_throws: 'L' },
-  { id: '7', name: 'Rafael Devers', team: 'BOS', starter: 'Gerrit Cole', versus: 'NYY', home_runs: '12', stand: 'R', p_throws: 'L' },
-  { id: '8', name: 'Cal Raleigh', team: 'SEA', starter: 'Brayan Bello', versus: 'ATL', home_runs: '8', stand: 'R', p_throws: 'L' },
-  { id: '9', name: 'Aaron Judge', team: 'NYY', starter: 'Nester Cortez', versus: 'TEX', home_runs: '3', stand: 'R', p_throws: 'L' },
-  { id: '11', name: 'Rafael Devers', team: 'BOS', starter: 'Gerrit Cole', versus: 'NYY', home_runs: '12', stand: 'R', p_throws: 'L' },
-  { id: '21', name: 'Cal Raleigh', team: 'SEA', starter: 'Brayan Bello', versus: 'ATL', home_runs: '8', stand: 'R', p_throws: 'L' },
-  { id: '31', name: 'Aaron Judge', team: 'NYY', starter: 'Nester Cortez', versus: 'TEX', home_runs: '3', stand: 'R', p_throws: 'L' },
-  { id: '41', name: 'Rafael Devers', team: 'BOS', starter: 'Gerrit Cole', versus: 'NYY', home_runs: '12', stand: 'R', p_throws: 'L' },
-  { id: '51', name: 'Cal Raleigh', team: 'SEA', starter: 'Brayan Bello', versus: 'ATL', home_runs: '8', stand: 'R', p_throws: 'L' },
-  { id: '61', name: 'Aaron Judge', team: 'NYY', starter: 'Nester Cortez', versus: 'TEX', home_runs: '3', stand: 'R', p_throws: 'L' },
-  { id: '71', name: 'Rafael Devers', team: 'BOS', starter: 'Gerrit Cole', versus: 'NYY', home_runs: '12', stand: 'R', p_throws: 'L' },
-  { id: '81', name: 'Cal Raleigh', team: 'SEA', starter: 'Brayan Bello', versus: 'ATL', home_runs: '8', stand: 'R', p_throws: 'L' },
-  { id: '91', name: 'Aaron Judge', team: 'NYY', starter: 'Nester Cortez', versus: 'TEX', home_runs: '3', stand: 'R', p_throws: 'L' },
-  // Add more items as needed
-];
-
 const teamLogos: TeamLogos = {
   'BOS': require('./assets/mlb_logos/BOS.png'),
   'SEA': require('./assets/mlb_logos/SEA.png'),
   'NYY': require('./assets/mlb_logos/NYY.png'),
-  // Add more entries for other teams as needed
+  'CIN': require('./assets/mlb_logos/CIN.png'),
+  'LAD': require('./assets/mlb_logos/LAD.png'),
+  'PHI': require('./assets/mlb_logos/PHI.png'),
+  'LAA': require('./assets/mlb_logos/LAA.png'),
+  'TEX': require('./assets/mlb_logos/TEX.png'),
+  'ATL': require('./assets/mlb_logos/ATL.png'),
+  'MIL': require('./assets/mlb_logos/MIL.png'),
+  'COL': require('./assets/mlb_logos/COL.png'),
+  'WSH': require('./assets/mlb_logos/WSH.png'),
+  'CHC': require('./assets/mlb_logos/CHC.png'),
+  'BAL': require('./assets/mlb_logos/BAL.png'),
+  'CHW': require('./assets/mlb_logos/CHW.png'),
+  'TOR': require('./assets/mlb_logos/TOR.png'),
+  'MIN': require('./assets/mlb_logos/MIN.png'),
+  'HOU': require('./assets/mlb_logos/HOU.png'),
+  'NYM': require('./assets/mlb_logos/NYM.png'),
+  'TB': require('./assets/mlb_logos/TB.png'),
+  'SD': require('./assets/mlb_logos/SD.png'),
+  'STL': require('./assets/mlb_logos/STL.png'),
+  'CLE': require('./assets/mlb_logos/CLE.png'),
+  'MIA': require('./assets/mlb_logos/MIA.png'),
+  'KAN': require('./assets/mlb_logos/KAN.png'),
+  'ARI': require('./assets/mlb_logos/ARI.png'),
+  'SF': require('./assets/mlb_logos/SF.png'),
+  'OAK': require('./assets/mlb_logos/OAK.png'),
+  'PIT': require('./assets/mlb_logos/PIT.png'),
+  'DET': require('./assets/mlb_logos/DET.png')
 };
 
-const windowWidth = Dimensions.get('window').width;
 
 const today = new Date()
+const auth = getAuth(app)
+const db = getFirestore(app)
 
 
-
-const ListItem: React.FC<{ player: PlayerData; isLast: boolean, isFirst: boolean; selectionCount: number; onItemSelect: () => void }> = ({ player, isLast, isFirst, selectionCount, onItemSelect }) => {
+const ListItem: React.FC<{ player: MatchupData; isLast: boolean, isFirst: boolean; selectionCount: number; selectedTab: string; onItemSelect: () => void }> = ({ player, isLast, isFirst, selectionCount, selectedTab, onItemSelect }) => {
   const [isSelected, setIsSelected] = useState(false);
-
   const handlePress = () => {
     if (selectionCount < 10 || isSelected) {
       setIsSelected(!isSelected);
@@ -78,33 +107,67 @@ const ListItem: React.FC<{ player: PlayerData; isLast: boolean, isFirst: boolean
         borderTopRightRadius: 8,
       }]}>
         <Image
-          source={teamLogos[player.team]}
+          source={teamLogos[player.batterAbr]}
           style={{ height: 50, width: 50, marginLeft: 10 }}
         />
         <View style={styles.infoContainer}>
-          <Text style={{ fontSize: 20 }}>{player.name} ({player.stand})</Text>
-          <Text>Versus ({player.versus}) {player.starter} ({player.p_throws})</Text>
+          <Text style={{ fontSize: 20 }}>{player.batterName} ({player.stand})</Text>
+          <Text>vs. {player.pitcherName} {player.pitcherAbr} ({player.p_throws})</Text>
         </View>
         <View style={styles.homeRunsContainer}>
-          <Text style={{ fontSize: 24 }}>{player.home_runs}</Text>
+          {selectedTab == '2024' && <Text style={{ fontSize: 24 }}>{player.hr_2024}</Text>}
+          {selectedTab == '2023' && <Text style={{ fontSize: 24 }}>{player.hr_2023}</Text>}
+          {selectedTab == 'Last 10' && <Text style={{ fontSize: 24 }}>{player.hr_last10}</Text>}
         </View>
       </View>
     </TouchableOpacity>
   );
 };
 
+// Or if you prefer using interfaces
+
+
 const App: React.FC = () => {
 
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [selectedTab, setSelectedTab] = useState<string>("2024")
-  const [modalVisible, setModalVisible] = useState(false);
-  const [playerData, sortData] = useState(data.slice().sort((a, b) => parseInt(b.home_runs) - parseInt(a.home_runs)));
+  const [helpModalVisible, setHelpModalVisible] = useState(false);
+  const [AuthModalVisible, setAuthModalVisible] = useState(false);
+  const [ProfileModalVisible, setProfileModalVisible] = useState(false);
+  const [data, setData] = useState<MatchupData[]>([]);
   const [visibleCount, setVisibleCount] = useState(10);
   const hideButtons = selectedItems.length < 10;
   const { width, height } = useWindowDimensions();
-  const isMobile = width <= 780;
+  const isMobile = width <= 790;
+  const userData = useUserData();
 
   useEffect(() => {
+    const fetchData = async () => {
+      const ref = collection(db, 'Playerset', '2024-04-22', 'Players');
+      try {
+        const querySnapshot = await getDocs(ref);
+        const items = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          probabilityClass0: doc.data().Probability_class_0,
+          probabilityClass1: doc.data().Probability_class_1,
+          batterId: doc.data().batter,
+          batterAbr: doc.data().batter_abr,
+          batterName: doc.data().batter_name,
+          hr_2023: doc.data().home_runs_2023,
+          hr_2024: doc.data().home_runs_2024,
+          hr_last10: doc.data().home_runs_last10,
+          stand: doc.data().stand,
+          p_throws: doc.data().p_throws,
+          pitcherId: doc.data().pitcher,
+          pitcherAbr: doc.data().pitcher_abr,
+          pitcherName: doc.data().pitcher_name
+        }));
+        setData(items.sort((a, b) => b.hr_2024 - a.hr_2024));
+      } catch (error) {
+        console.error("Error fetching documents:", error);
+      }
+    };
+    fetchData();
     checkLastVisit();
   }, []);
 
@@ -116,7 +179,7 @@ const App: React.FC = () => {
 
       if (currentTime - lastVisitTime > 3600000) { // 1 hour in milliseconds
         console.log('User has not visited the application in the last hour.');
-        setModalVisible(true); // Set modalVisible to true
+        setHelpModalVisible(true); // Set modalVisible to true
         await AsyncStorage.setItem('lastVisit', new Date().toISOString());
       } else {
         console.log('User has visited the application in the last hour.');
@@ -139,6 +202,14 @@ const App: React.FC = () => {
     });
   };
 
+  const handlePlayerSubmit = () => {
+    const currentDate = new Date().toISOString().split('T')[0];
+    const dataToUpdate: { [key: string]: any } = {};
+    dataToUpdate[currentDate] = selectedItems;
+    // Toggle selection of items
+    updateDoc(doc(db, "UserData", auth.currentUser!.uid,), dataToUpdate)
+  };
+
   return (
     <Fragment>
       <LinearGradient colors={['#04143C', 'whitesmoke']} locations={[0.5, 0.5]} style={{ flex: 1 }}>
@@ -152,111 +223,122 @@ const App: React.FC = () => {
                     style={styles.image}
                   />
                 </View>
-                <View style={styles.buttonContainer}>
-                  <TouchableOpacity style={styles.button}>
-                    <Text style={styles.buttonText}>Button 1</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.button}>
-                    <Text style={styles.buttonText}>Button 2</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.button}>
-                    <Text style={styles.buttonText}>Button 3</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-              <View style={[styles.mainContent, { width: isMobile ? width - 30 : width / 2 },]}>
-                <View style={styles.titleBar}>
-                  <Text style={{ fontSize: isMobile ? 24 : 32, marginBottom: 4 }} >Today's Picks ({today.getMonth() + 1}-{today.getDate()}-{today.getFullYear()})</Text>
-                  <TouchableOpacity onPress={() => setModalVisible(true)}>
-                    <Ionicons name="help-circle-sharp" size={30} color="#04143C" />
-                  </TouchableOpacity>
-                  <Modal
-                    animationType='fade'
-                    transparent={true}
-                    visible={modalVisible}
-                    onRequestClose={() => setModalVisible(false)}
-                  >
-                    <View style={styles.modalBackground}>
-                      <View style={styles.centeredView}>
-                        <View style={[styles.modalView, { paddingHorizontal: isMobile ? 30 : 40, }]}>
-                          <TouchableOpacity onPress={() => setModalVisible(false)} style={styles.closeButton}>
-                            <Ionicons name='close' size={32} color={'lightgrey'} />
-                          </TouchableOpacity>
-                          <Text style={{ fontSize: 24, fontWeight: 'bold', marginBottom: 8, color: '#04143C' }} >How To Play</Text>
-                          <Text style={{ fontSize: 16, marginBottom: 6 }} >1.{")"}  Select 10 players you think will hit a Dong today. The players to choose from are a random subset that changes every day.</Text>
-                          <Text style={{ fontSize: 16, marginBottom: 6 }} >2.{")"}  Press Submit when you are done and compare your selections against The Algorithm's.</Text>
-                          <Text style={{ fontSize: 16, marginBottom: 24 }} >3.{")"}  Points are tallied at the end of the day and remember, the more correctly predicted Dongs, the better.</Text>
-                          <Text style={{ fontSize: 16, }}>Incase you don't know, Dongs are Home Runs.</Text>
-                        </View>
-                      </View>
-                    </View>
-                  </Modal>
-                </View>
-                <View style={{ flex: 1, flexDirection: 'row' }}>
-                  <Text style={{ fontSize: isMobile ? 16 : 20, marginBottom: 4, marginLeft: 8, }} >Selections Remaining: </Text>
-                  <Text style={{ fontSize: isMobile ? 16 : 20, color: 'cornflowerblue', fontWeight: 'bold' }} >{10 - selectedItems.length}</Text>
-                </View>
-                <View style={styles.tabBar}>
-                  <TouchableOpacity
-                    style={[selectedTab == '2024' ? styles.selectedTab : styles.unselectedTab, { paddingHorizontal: isMobile ? 12 : 18, }]}
-                    onPress={() => {
-                      sortData(playerData.slice().sort((a, b) => parseInt(b.home_runs) - parseInt(a.home_runs)))
-                      setSelectedTab('2024')
-                    }}>
-                    <Text style={{ color: selectedTab == '2024' ? 'white' : '#04143C' }}>2024</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[selectedTab == '2023' ? styles.selectedTab : styles.unselectedTab, { paddingHorizontal: isMobile ? 12 : 18, }]}
-                    onPress={() => {
-                      sortData(playerData.slice().sort((a, b) => a.name.localeCompare(b.name)))
-                      setSelectedTab('2023')
-                    }}>
-                    <Text style={{ color: selectedTab == '2023' ? 'white' : '#04143C' }}>2023</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[selectedTab == 'Last 7' ? styles.selectedTab : styles.unselectedTab, { paddingHorizontal: isMobile ? 12 : 18, }]}
-                    onPress={() => {
-                      sortData(playerData.slice().sort((a, b) => a.team.localeCompare(b.team)))
-                      setSelectedTab('Last 7')
-                    }}>
-                    <Text style={{ color: selectedTab == 'Last 7' ? 'white' : '#04143C' }}>Last 7</Text>
-                  </TouchableOpacity>
-                  <View style={{ flex: 1, alignSelf: 'flex-end' }}>
-                    {selectedTab == '2024' && <Text style={{ alignSelf: 'flex-end', paddingBottom: 4, paddingRight: 4 }}>2024 Total Dongs:</Text>}
-                    {selectedTab == '2023' && <Text style={{ alignSelf: 'flex-end', paddingBottom: 4, paddingRight: 4 }}>2023 Total Dongs:</Text>}
-                    {selectedTab == 'Last 7' && <Text style={{ alignSelf: 'flex-end', paddingBottom: 4, paddingRight: 4 }}>Dongs in Last 7 Days:</Text>}
-                  </View>
-                </View>
-                <View style={styles.list}>
-                  {
-                    playerData.slice(0, visibleCount).map((item, index) => (
-                      <ListItem
-                        key={item.id}
-                        player={item}
-                        isLast={index === visibleCount - 1 || index === playerData.length - 1}
-                        isFirst={index === 0}
-                        selectionCount={selectedItems.length}
-                        onItemSelect={() => handleItemSelect(item.id)}
-                      />
-                    ))
+                {auth.currentUser == null && <TouchableOpacity
+                  style={[{
+                    backgroundColor: 'white', paddingHorizontal: 15,
+                    paddingVertical: 8,
+                    marginTop: 9,
+                    borderRadius: 6,
+                  }, styles.endButton]}
+                  onPress={() =>
+                    setAuthModalVisible(true)
                   }
-                </View>
-                {visibleCount < playerData.length && <TouchableOpacity
-                  style={[{ alignContent: 'center' },]}
-                  onPress={() => setVisibleCount(visibleCount + 10)}
                 >
-                  <Text style={{ color: '#04143C', alignSelf: 'center' }}>Load More</Text>
+                  <LoginRegisterModal visible={AuthModalVisible} onClose={() => setAuthModalVisible(false)} />
+                  <Text style={{ color: '#04143C' }}>Login</Text>
                 </TouchableOpacity>}
-                <TouchableOpacity
-                  style={[{ backgroundColor: !hideButtons ? '#04143C' : 'lightgrey' }, styles.submitButton]}>
-                  <Text style={{ color: 'white' }}>Submit</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[{ backgroundColor: !hideButtons ? '#04143C' : 'lightgrey' }, styles.submitButton]}
-                >
-                  <Text style={{ color: 'white' }}>Test</Text>
-                </TouchableOpacity>
+                {auth.currentUser != null && userData != null && <TouchableOpacity onPress={() => setProfileModalVisible(true)} style={styles.endButton}>
+                  <ProfileModal visible={ProfileModalVisible} onClose={() => setProfileModalVisible(false)} name={userData.name} />
+                  <FontAwesome name="user" size={30} color="white" />
+                </TouchableOpacity>}
               </View>
+              {data.length == 0 && <View style={{ height: 1000 }}>
+
+              </View>}
+              {data.length != 0 && <Animated.View
+                key={'uniqueKey'}
+                entering={FadeIn.duration(400)}
+                exiting={FadeOut.duration(400)}>
+                <View style={[styles.mainContent, { width: isMobile ? width - 30 : width / 2 },]}>
+                  <View style={styles.titleBar}>
+                    <Text style={{ fontSize: isMobile ? 24 : 32, marginBottom: 4 }} >Today's Picks ({today.getMonth() + 1}-{today.getDate()}-{today.getFullYear()})</Text>
+                    <TouchableOpacity onPress={() => setHelpModalVisible(true)}>
+                      <Ionicons name="help-circle-sharp" size={30} color="#04143C" />
+                    </TouchableOpacity>
+                    <HelpModal visible={helpModalVisible} onClose={() => setHelpModalVisible(false)} isMobile={isMobile} />
+                  </View>
+                  <View style={{ flex: 1, flexDirection: 'row' }}>
+                    <Text style={{ fontSize: isMobile ? 16 : 20, marginBottom: 4, marginLeft: 8, }} >Selections Remaining: </Text>
+                    <Text style={{ fontSize: isMobile ? 16 : 20, color: 'cornflowerblue', fontWeight: 'bold' }} >{10 - selectedItems.length}</Text>
+                  </View>
+                  <View style={styles.tabBar}>
+                    <TouchableOpacity
+                      style={[selectedTab == '2024' ? styles.selectedTab : styles.unselectedTab, { paddingHorizontal: isMobile ? 12 : 18, }]}
+                      onPress={() => {
+                        setData(data.slice().sort((a, b) => b.hr_2024 - a.hr_2024))
+                        setSelectedTab('2024')
+                      }}>
+                      <Text style={{ color: selectedTab == '2024' ? 'white' : '#04143C' }}>2024</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[selectedTab == '2023' ? styles.selectedTab : styles.unselectedTab, { paddingHorizontal: isMobile ? 12 : 18, }]}
+                      onPress={() => {
+                        setData(data.slice().sort((a, b) => b.hr_2023 - a.hr_2023))
+                        setSelectedTab('2023')
+                      }}>
+                      <Text style={{ color: selectedTab == '2023' ? 'white' : '#04143C' }}>2023</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[selectedTab == 'Last 10' ? styles.selectedTab : styles.unselectedTab, { paddingHorizontal: isMobile ? 12 : 18, }]}
+                      onPress={() => {
+                        setData(data.slice().sort((a, b) => b.hr_last10 - a.hr_last10))
+                        setSelectedTab('Last 10')
+                      }}>
+                      <Text style={{ color: selectedTab == 'Last 10' ? 'white' : '#04143C' }}>Last 10</Text>
+                    </TouchableOpacity>
+                    <View style={{ flex: 1, alignSelf: 'flex-end' }}>
+                      {selectedTab == '2024' && <Text style={{ alignSelf: 'flex-end', paddingBottom: 4, paddingRight: 4 }}>2024 Total Dongs:</Text>}
+                      {selectedTab == '2023' && <Text style={{ alignSelf: 'flex-end', paddingBottom: 4, paddingRight: 4 }}>2023 Total Dongs:</Text>}
+                      {selectedTab == 'Last 10' && <Text style={{ alignSelf: 'flex-end', paddingBottom: 4, paddingRight: 4 }}>Last 10 Days Dongs:</Text>}
+                    </View>
+                  </View>
+                  <View style={styles.list}>
+                    {
+                      data.slice(0, visibleCount).map((item, index) => (
+                        <ListItem
+                          key={item.id}
+                          player={item}
+                          isLast={index === visibleCount - 1 || index === data.length - 1}
+                          isFirst={index === 0}
+                          selectionCount={selectedItems.length}
+                          selectedTab={selectedTab}
+                          onItemSelect={() => handleItemSelect(item.id)}
+                        />
+                      ))
+                    }
+                  </View>
+                  <View style={{
+                    marginTop: 0,
+                    flex: 1,
+                    justifyContent: 'center',
+                    alignItems: 'flex-start',
+                    flexDirection: 'row',
+                  }}>
+                    {visibleCount < data.length && <TouchableOpacity
+                      style={styles.bottomTab}
+                      onPress={() => setVisibleCount(visibleCount + 10)}
+                    >
+                      <Text style={{ color: 'white', alignSelf: 'center' }}>Load More</Text>
+                    </TouchableOpacity>}
+                  </View>
+                  <TouchableOpacity
+                    style={[{ backgroundColor: !hideButtons ? '#04143C' : 'lightgrey' }, styles.submitButton]}
+                    onPress={() => {
+                      if (!hideButtons) {
+                        if (auth.currentUser == null) {
+                          setAuthModalVisible(true)
+                        } else {
+                          handlePlayerSubmit()
+                        }
+                      }
+                    }
+                    }
+                  >
+                    <LoginRegisterModal visible={AuthModalVisible} onClose={() => setAuthModalVisible(false)} />
+                    <Text style={{ color: 'white' }}>Submit</Text>
+                  </TouchableOpacity>
+                </View>
+              </Animated.View>}
             </View>
           </SafeAreaView>
         </ScrollView>
@@ -299,6 +381,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderBottomWidth: 0,
     borderColor: '#04143C'
+  },
+  bottomTab: {
+    borderBottomLeftRadius: 5,
+    borderBottomRightRadius: 5,
+    paddingVertical: 6,
+    paddingHorizontal: 18,
+    justifyContent: 'center',
+    backgroundColor: '#04143C'
   },
   header: {
     height: 85,
@@ -387,6 +477,8 @@ const styles = StyleSheet.create({
   list: {
     borderRadius: 10,
     borderWidth: 2,
+    marginBottom: 0,
+    paddingBottom: 0,
     borderColor: '#04143C',
     backgroundColor: 'white',
   },
@@ -418,6 +510,11 @@ const styles = StyleSheet.create({
     marginHorizontal: 5,
     marginTop: 9,
     borderRadius: 6,
+  },
+  endButton: {
+    alignSelf: 'flex-end',
+    justifyContent: 'center',
+    marginHorizontal: 20
   }
 })
 
