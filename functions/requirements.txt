@@ -1,1 +1,7 @@
-firebase_functions~=0.1.0
+firebase_functions
+numpy
+pandas
+supabase
+MLB-statsapi
+pybaseball
+scikit-learn

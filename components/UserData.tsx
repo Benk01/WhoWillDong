@@ -8,14 +8,21 @@ const auth = getAuth(app)
 const db = getFirestore(app)
 
 
+
 interface UserData {
     name: string;
+    todaySelections: string[];
+    yesterdaySelections: string[];
     // Add other user data fields here if needed
 }
 
 const useUserData = (): UserData | null => {
     const [userData, setUserData] = useState<UserData | null>(null);
-
+    const today = new Date();
+    let yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayFormatted = `${yesterday.getFullYear()}-${(yesterday.getMonth() + 1).toString().padStart(2, '0')}-${yesterday.getDate().toString().padStart(2, '0')}`;
+    const todayFormatted = `${today.getFullYear()}-${(today.getMonth() + 1).toString().padStart(2, '0')}-${today.getDate().toString().padStart(2, '0')}`;
     useEffect(() => {
         const unsubscribe = auth.onAuthStateChanged(async (user) => {
             if (user) {
@@ -23,7 +30,8 @@ const useUserData = (): UserData | null => {
                 try {
                     const ref = await doc(db, 'UserData', auth.currentUser!.uid);
                     const document = await getDoc(ref);
-                    setUserData(document.data() as UserData);
+                    const data = document.data();
+                    setUserData(({ name: data!['name'], todaySelections: data![todayFormatted], yesterdaySelections: data![yesterdayFormatted] }) as UserData);
                 } catch (error) {
                     console.error("Error fetching user data:", error);
                 }
@@ -37,7 +45,6 @@ const useUserData = (): UserData | null => {
         // Cleanup subscription on unmount
         return () => unsubscribe();
     }, []);
-
     return userData;
 };
 

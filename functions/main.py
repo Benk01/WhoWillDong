@@ -5,7 +5,7 @@
 from datetime import datetime
 from datetime import timedelta
 import pickle
-from firebase_functions import scheduler_fn
+from firebase_functions import scheduler_fn, https_fn
 import numpy as np
 import pandas as pd
 from firebase_admin import initialize_app, firestore
@@ -90,10 +90,6 @@ TEAM_HR_FACTOR_DICT = {
 "DET":79
 }
 
-url: str = "https://uamwlolsfoeahksiadjn.supabase.co"
-key: str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVhbXdsb2xzZm9lYWhrc2lhZGpuIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTcxMzIyODI3NywiZXhwIjoyMDI4ODA0Mjc3fQ.Mxc4mikuAwHf1qEuv4p2u4Uhw26qappHlRJn4S9Km9s"
-supabase: Client = create_client(url, key)
-db = firestore.client()
 
 def get_player_info_from_api(player_id):
     params = {
@@ -104,6 +100,10 @@ def get_player_info_from_api(player_id):
     return r
 
 def updatePlayerInfo(player_ids):
+    url: str = "https://uamwlolsfoeahksiadjn.supabase.co"
+    key: str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVhbXdsb2xzZm9lYWhrc2lhZGpuIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTcxMzIyODI3NywiZXhwIjoyMDI4ODA0Mjc3fQ.Mxc4mikuAwHf1qEuv4p2u4Uhw26qappHlRJn4S9Km9s"
+    supabase: Client = create_client(url, key)
+    db = firestore.client()
     print("checking player info for", len(player_ids), "players...")
     index = 0
     for player_id in player_ids:
@@ -128,12 +128,21 @@ def updatePlayerInfo(player_ids):
 
 # Define the function to query stats for a player's past n at-bats
 def mult_batting_records(player_ids):
+    url: str = "https://uamwlolsfoeahksiadjn.supabase.co"
+    key: str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVhbXdsb2xzZm9lYWhrc2lhZGpuIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTcxMzIyODI3NywiZXhwIjoyMDI4ODA0Mjc3fQ.Mxc4mikuAwHf1qEuv4p2u4Uhw26qappHlRJn4S9Km9s"
+    supabase: Client = create_client(url, key)
+    db = firestore.client()
     # Retrieve Statcast data for the player
+    print(player_ids)
     data, count = supabase.table('Events').select("*").in_('batter', player_ids).execute()
     events_data = pd.DataFrame(data[1])
     return events_data[['batter', 'events', 'stand', 'hit_distance_sc', 'launch_speed', 'launch_angle', 'game_date']]
 
 def mult_pitching_records(player_ids):
+    url: str = "https://uamwlolsfoeahksiadjn.supabase.co"
+    key: str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVhbXdsb2xzZm9lYWhrc2lhZGpuIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTcxMzIyODI3NywiZXhwIjoyMDI4ODA0Mjc3fQ.Mxc4mikuAwHf1qEuv4p2u4Uhw26qappHlRJn4S9Km9s"
+    supabase: Client = create_client(url, key)
+    db = firestore.client()
     # Retrieve Statcast data for the player
     data, count = supabase.table('Events').select("*").in_('pitcher', player_ids).execute()
     events_data = pd.DataFrame(data[1])
@@ -212,16 +221,166 @@ def calc_player_data(events_data):
 
 def transform_date(date_string):
     date_obj = datetime.strptime(date_string, "%Y-%m-%d").date()
-    return date_obj.strftime("%Y-%m-%d") 
+    return date_obj.strftime("%Y-%m-%d")
+
+def get_schedule(todays_date):
+    params = {"date": todays_date.strftime('%Y-%m-%d')}
+    params.update(
+        {
+            "sportId": str(1),
+            "hydrate": "decisions,probablePitcher(note),linescore,broadcasts,game(content(media(epg)))"
+        }
+    )
+    r = statsapi.get("schedule", params)
+    games = []
+    if r.get("totalItems") == 0:
+        return games  # TODO: ValueError('No games to parse from schedule object.') instead?
+    else:
+        for date in r.get("dates"):
+            for game in date.get("games"):
+                game_info = {
+                    "game_id": game["gamePk"],
+                    "game_datetime": game["gameDate"],
+                    "game_date": date["date"],
+                    "game_type": game["gameType"],
+                    "status": game["status"]["detailedState"],
+                    "away_name": game["teams"]["away"]["team"].get("name", "???"),
+                    "home_name": game["teams"]["home"]["team"].get("name", "???"),
+                    "away_id": game["teams"]["away"]["team"]["id"],
+                    "home_id": game["teams"]["home"]["team"]["id"],
+                    "doubleheader": game["doubleHeader"],
+                    "game_num": game["gameNumber"],
+                    "home_probable_pitcher": game["teams"]["home"]
+                    .get("probablePitcher", {})
+                    .get("fullName", ""),
+                    "home_probable_pitcher_id": game["teams"]["home"]
+                    .get("probablePitcher", {})
+                    .get("id", ""),
+                    "away_probable_pitcher_id": game["teams"]["away"]
+                    .get("probablePitcher", {})
+                    .get("id", ""),
+                    "away_probable_pitcher": game["teams"]["away"]
+                    .get("probablePitcher", {})
+                    .get("fullName", ""),
+                    "home_pitcher_note": game["teams"]["home"]
+                    .get("probablePitcher", {})
+                    .get("note", ""),
+                    "away_pitcher_note": game["teams"]["away"]
+                    .get("probablePitcher", {})
+                    .get("note", ""),
+                    "away_score": game["teams"]["away"].get("score", "0"),
+                    "home_score": game["teams"]["home"].get("score", "0"),
+                    "current_inning": game.get("linescore", {}).get(
+                        "currentInning", ""
+                    ),
+                    "inning_state": game.get("linescore", {}).get("inningState", ""),
+                    "venue_id": game.get("venue", {}).get("id"),
+                    "venue_name": game.get("venue", {}).get("name"),
+                    "national_broadcasts": list(
+                        set(
+                            broadcast["name"]
+                            for broadcast in game.get("broadcasts", [])
+                            if broadcast.get("isNational", False)
+                        )
+                    ),
+                    "series_status": game.get("seriesStatus", {}).get("result"),
+                }
+                if game["content"].get("media", {}).get("freeGame", False):
+                    game_info["national_broadcasts"].append("MLB.tv Free Game")
+                if game_info["status"] in ["Final", "Game Over"]:
+                    if game.get("isTie"):
+                        game_info.update({"winning_team": "Tie", "losing_Team": "Tie"})
+                    else:
+                        game_info.update(
+                            {
+                                "winning_team": game["teams"]["away"]["team"].get(
+                                    "name", "???"
+                                )
+                                if game["teams"]["away"].get("isWinner")
+                                else game["teams"]["home"]["team"].get("name", "???"),
+                                "losing_team": game["teams"]["home"]["team"].get(
+                                    "name", "???"
+                                )
+                                if game["teams"]["away"].get("isWinner")
+                                else game["teams"]["away"]["team"].get("name", "???"),
+                                "winning_pitcher": game.get("decisions", {})
+                                .get("winner", {})
+                                .get("fullName", ""),
+                                "losing_pitcher": game.get("decisions", {})
+                                .get("loser", {})
+                                .get("fullName", ""),
+                                "save_pitcher": game.get("decisions", {})
+                                .get("save", {})
+                                .get("fullName"),
+                            }
+                        )
+                    summary = (
+                        date["date"]
+                        + " - "
+                        + game["teams"]["away"]["team"].get("name", "???")
+                        + " ("
+                        + str(game["teams"]["away"].get("score", ""))
+                        + ") @ "
+                        + game["teams"]["home"]["team"].get("name", "???")
+                        + " ("
+                        + str(game["teams"]["home"].get("score", ""))
+                        + ") ("
+                        + game["status"]["detailedState"]
+                        + ")"
+                    )
+                    game_info.update({"summary": summary})
+                elif game_info["status"] == "In Progress":
+                    game_info.update(
+                        {
+                            "summary": date["date"]
+                            + " - "
+                            + game["teams"]["away"]["team"]["name"]
+                            + " ("
+                            + str(game["teams"]["away"].get("score", "0"))
+                            + ") @ "
+                            + game["teams"]["home"]["team"]["name"]
+                            + " ("
+                            + str(game["teams"]["home"].get("score", "0"))
+                            + ") ("
+                            + game["linescore"]["inningState"]
+                            + " of the "
+                            + game["linescore"]["currentInningOrdinal"]
+                            + ")"
+                        }
+                    )
+                else:
+                    summary = (
+                        date["date"]
+                        + " - "
+                        + game["teams"]["away"]["team"]["name"]
+                        + " @ "
+                        + game["teams"]["home"]["team"]["name"]
+                        + " ("
+                        + game["status"]["detailedState"]
+                        + ")"
+                    )
+                    game_info.update({"summary": summary})
+
+                games.append(game_info)
+
+        return games
 
 
-@scheduler_fn.on_schedule(schedule="every hour")
+#@scheduler_fn.on_schedule(schedule="every hour")
+@https_fn.on_request()
 def test(event: scheduler_fn.ScheduledEvent):
+    url: str = "https://uamwlolsfoeahksiadjn.supabase.co"
+    key: str = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVhbXdsb2xzZm9lYWhrc2lhZGpuIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTcxMzIyODI3NywiZXhwIjoyMDI4ODA0Mjc3fQ.Mxc4mikuAwHf1qEuv4p2u4Uhw26qappHlRJn4S9Km9s"
+    supabase: Client = create_client(url, key)
+    db = firestore.client()
     todays_date = datetime.now() - timedelta(hours=4)
+    if todays_date.hour >= 17:
+        # Add 1 day if it's after 5 PM
+        todays_date += timedelta(days=1)
     yesterdays_date = todays_date - timedelta(days=1)
 
     # 1.) Update statcast with latest data
-    statcast_data = pybaseball.statcast(start_dt='2024-04-15', end_dt=todays_date.strftime('%Y-%m-%d'))
+    statcast_data = pybaseball.statcast(start_dt=yesterdays_date.strftime('%Y-%m-%d'), end_dt=todays_date.strftime('%Y-%m-%d'))
     filtered_df = statcast_data[(statcast_data['game_type'] == 'R') & (statcast_data['events'].notna())]
     filtered_df = filtered_df.replace({np.nan: None})
     filtered_df = filtered_df[['pitcher', 'batter', 'game_date', 'events', 'p_throws', 'stand', 'hit_distance_sc', 'launch_speed', 'launch_angle']]
@@ -248,13 +407,13 @@ def test(event: scheduler_fn.ScheduledEvent):
     # Check to see if all players are in Player_Info, otherwise update
     print("Found", len(player_id_list), "batters that match the criteria for target batters list")
     print("Skipping batter player_info update")
-    #updatePlayerInfo(player_id_list)
+    updatePlayerInfo(player_id_list)
     data, count = supabase.table('Player_Info').select("*").in_('Player_ID', player_id_list).execute()
     player_info = pd.DataFrame(data[1])
     player_info['Player_ID'] = player_info.loc[:, 'Player_ID'].astype(object)
     
     # 3.) Get today's schedule and starting pitchers
-    sched = statsapi.schedule(date=todays_date.strftime('%Y-%m-%d'))
+    sched = get_schedule(todays_date)
     df = pd.DataFrame(sched)
     df['game_datetime'] = df['game_datetime'].apply(lambda dt: datetime.strptime(dt.replace("T", ' ').replace("Z", ""), '%Y-%m-%d %H:%M:%S'))
     df['game_datetime'] = df['game_datetime'].apply(lambda dt: dt - timedelta(hours=4))
@@ -273,8 +432,8 @@ def test(event: scheduler_fn.ScheduledEvent):
     merged_df['opposing_probable_pitcher_id'] = merged_df['opposing_probable_pitcher_id'].replace('', '000000')
     unique_pitcher_id_list = merged_df['opposing_probable_pitcher_id'].unique().tolist()
     print("Found", len(unique_pitcher_id_list), "unique pitchers")
-    print("Skipping pitcher player_info update")
-    #updatePlayerInfo(unique_pitcher_id_list)
+    #print("Skipping pitcher player_info update")
+    updatePlayerInfo(unique_pitcher_id_list)
     merged_df = merged_df.rename(columns={'Player_ID': 'batter', 'Team_Abr': 'batter_abr', 'Full_Name': 'batter_name', 'Bat_Side': 'stand', })
     data, count = supabase.table('Player_Info').select("*").in_('Player_ID', unique_pitcher_id_list).execute()
     pitcher_info = pd.DataFrame(data[1])

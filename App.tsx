@@ -25,7 +25,14 @@ import HelpModal from './components/HelpModal';
 import { getAuth } from 'firebase/auth';
 import ProfileModal from './components/ProfileModal';
 import useUserData from './components/UserData';
+import PicksView from './main_components/PicksView';
+import ResultsView from './main_components/ResultsView';
+import UserData from './components/UserData';
 
+
+const today = new Date()
+const auth = getAuth(app)
+const db = getFirestore(app)
 
 interface MatchupData {
   id: string,
@@ -42,108 +49,146 @@ interface MatchupData {
   pitcherId: number;
   pitcherAbr: string;
   pitcherName: string;
+  isSelected: boolean;
 }
-
-
-interface TeamLogos {
-  [key: string]: any; // Image source type or any other appropriate type
-}
-
-const teamLogos: TeamLogos = {
-  'BOS': require('./assets/mlb_logos/BOS.png'),
-  'SEA': require('./assets/mlb_logos/SEA.png'),
-  'NYY': require('./assets/mlb_logos/NYY.png'),
-  'CIN': require('./assets/mlb_logos/CIN.png'),
-  'LAD': require('./assets/mlb_logos/LAD.png'),
-  'PHI': require('./assets/mlb_logos/PHI.png'),
-  'LAA': require('./assets/mlb_logos/LAA.png'),
-  'TEX': require('./assets/mlb_logos/TEX.png'),
-  'ATL': require('./assets/mlb_logos/ATL.png'),
-  'MIL': require('./assets/mlb_logos/MIL.png'),
-  'COL': require('./assets/mlb_logos/COL.png'),
-  'WSH': require('./assets/mlb_logos/WSH.png'),
-  'CHC': require('./assets/mlb_logos/CHC.png'),
-  'BAL': require('./assets/mlb_logos/BAL.png'),
-  'CHW': require('./assets/mlb_logos/CHW.png'),
-  'TOR': require('./assets/mlb_logos/TOR.png'),
-  'MIN': require('./assets/mlb_logos/MIN.png'),
-  'HOU': require('./assets/mlb_logos/HOU.png'),
-  'NYM': require('./assets/mlb_logos/NYM.png'),
-  'TB': require('./assets/mlb_logos/TB.png'),
-  'SD': require('./assets/mlb_logos/SD.png'),
-  'STL': require('./assets/mlb_logos/STL.png'),
-  'CLE': require('./assets/mlb_logos/CLE.png'),
-  'MIA': require('./assets/mlb_logos/MIA.png'),
-  'KAN': require('./assets/mlb_logos/KAN.png'),
-  'ARI': require('./assets/mlb_logos/ARI.png'),
-  'SF': require('./assets/mlb_logos/SF.png'),
-  'OAK': require('./assets/mlb_logos/OAK.png'),
-  'PIT': require('./assets/mlb_logos/PIT.png'),
-  'DET': require('./assets/mlb_logos/DET.png')
-};
-
-
-const today = new Date()
-const auth = getAuth(app)
-const db = getFirestore(app)
-
-
-const ListItem: React.FC<{ player: MatchupData; isLast: boolean, isFirst: boolean; selectionCount: number; selectedTab: string; onItemSelect: () => void }> = ({ player, isLast, isFirst, selectionCount, selectedTab, onItemSelect }) => {
-  const [isSelected, setIsSelected] = useState(false);
-  const handlePress = () => {
-    if (selectionCount < 10 || isSelected) {
-      setIsSelected(!isSelected);
-      onItemSelect();
-    }
-  };
-
-  return (
-    <TouchableOpacity onPress={handlePress}>
-      <View style={[styles.listItem, !isLast && styles.borderBottom, isSelected && styles.selectedItem, isLast && {
-        borderBottomLeftRadius: 8,
-        borderBottomRightRadius: 8,
-      }, isFirst && {
-        borderTopLeftRadius: 8,
-        borderTopRightRadius: 8,
-      }]}>
-        <Image
-          source={teamLogos[player.batterAbr]}
-          style={{ height: 50, width: 50, marginLeft: 10 }}
-        />
-        <View style={styles.infoContainer}>
-          <Text style={{ fontSize: 20 }}>{player.batterName} ({player.stand})</Text>
-          <Text>vs. {player.pitcherName} {player.pitcherAbr} ({player.p_throws})</Text>
-        </View>
-        <View style={styles.homeRunsContainer}>
-          {selectedTab == '2024' && <Text style={{ fontSize: 24 }}>{player.hr_2024}</Text>}
-          {selectedTab == '2023' && <Text style={{ fontSize: 24 }}>{player.hr_2023}</Text>}
-          {selectedTab == 'Last 10' && <Text style={{ fontSize: 24 }}>{player.hr_last10}</Text>}
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
-};
 
 // Or if you prefer using interfaces
 
 
+function firestoreTimestampToDate(timestamp: Timestamp): Date {
+  // Convert Firestore timestamp to milliseconds since Unix epoch
+  const milliseconds = timestamp.toMillis();
+  // Create JavaScript Date object from milliseconds
+  const date = new Date(milliseconds);
+  return date;
+}
+
+function isEDT(date: Date) {
+  const mar = new Date(date.getFullYear(), 2, 1); // March 1st
+  const nov = new Date(date.getFullYear(), 10, 1); // November 1st
+  const startEDT = new Date(mar.getFullYear(), mar.getMonth(), 14 - (mar.getDay() || 7));
+  const endEDT = new Date(nov.getFullYear(), nov.getMonth(), 7 - (nov.getDay() || 7));
+  return date >= startEDT && date < endEDT;
+}
+
+function getEasternTime() {
+  const now = new Date(); // Local time
+  const localOffset = now.getTimezoneOffset() * 60000; // Local timezone offset in milliseconds
+  const utc = now.getTime() + localOffset; // Convert local time to UTC time in milliseconds
+  const estOffset = -5 * 3600000; // EST is UTC-5 hours
+  const estTime = new Date(utc + estOffset); // Create a new Date object for EST time
+
+  // Determine if currently during Eastern Daylight Time (EDT)
+  if (isEDT(estTime)) {
+    return new Date(estTime.getTime() + 3600000); // Adjust for EDT (UTC-4)
+  }
+  return estTime;
+}
+
+function getFormattedDate(date: Date) {
+  return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
+}
+
+const CountdownTimer = ({ targetTime, isOpen }: { targetTime: Date, isOpen: boolean }) => {
+  const [remainingTime, setRemainingTime] = useState<number>(0);
+
+  useEffect(() => {
+    // Calculate the initial remaining time
+    const currentTime = getEasternTime().getTime();
+    const difference = Math.max(0, targetTime.getTime() - currentTime); // Ensure the difference is not negative
+    setRemainingTime(difference);
+
+    // Update the remaining time every second
+    const timer = setInterval(() => {
+      const updatedCurrentTime = getEasternTime().getTime();
+      const updatedDifference = targetTime.getTime() - updatedCurrentTime;
+      setRemainingTime(updatedDifference);
+    }, 1000);
+
+    // Clear the interval on component unmount
+    return () => clearInterval(timer);
+  }, [targetTime]);
+
+  // Format the remaining time into hours, minutes, and seconds
+  const hours = Math.floor(remainingTime / (1000 * 60 * 60));
+  const minutes = Math.floor((remainingTime % (1000 * 60 * 60)) / (1000 * 60));
+  const seconds = Math.floor((remainingTime % (1000 * 60)) / 1000);
+  if (isOpen) {
+    return (
+      <View style={{ justifyContent: 'center', alignItems: 'center', marginVertical: 30 }}>
+        <Text style={{
+          color: 'white',
+          fontSize: 20,
+        }}>Picks Close in: {`${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`}</Text></View>
+    );
+  } else {
+    return (
+      <View style={{ justifyContent: 'center', alignItems: 'center', marginVertical: 30 }}>
+        <Text style={{
+          color: 'white',
+          fontSize: 20,
+        }}>Picks Open in: {`${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`}</Text></View>
+    );
+  }
+};
+
 const App: React.FC = () => {
 
-  const [selectedItems, setSelectedItems] = useState<string[]>([]);
-  const [selectedTab, setSelectedTab] = useState<string>("2024")
   const [helpModalVisible, setHelpModalVisible] = useState(false);
   const [AuthModalVisible, setAuthModalVisible] = useState(false);
   const [ProfileModalVisible, setProfileModalVisible] = useState(false);
-  const [data, setData] = useState<MatchupData[]>([]);
-  const [visibleCount, setVisibleCount] = useState(10);
-  const hideButtons = selectedItems.length < 10;
-  const { width, height } = useWindowDimensions();
-  const isMobile = width <= 790;
+  const [startTime, setStartTime] = useState<Date>()
+  const [endTime, setEndTime] = useState<Date>()
   const userData = useUserData();
+  const [data, setData] = useState<MatchupData[]>([]);
+  const [today, setToday] = useState<Date>(new Date());
+  const [mainContent, setMainContent] = useState('Picks');
+  const [selectedItems, setSelectedItems] = useState<string[]>([]);
+  const [isOpen, setIsOpen] = useState<boolean>(false)
+
+  useEffect(() => {
+    if (userData && userData.todaySelections) {
+      setSelectedItems(userData.todaySelections);
+      setMainContent('Results');
+    }
+  }, [userData]);
 
   useEffect(() => {
     const fetchData = async () => {
-      const ref = collection(db, 'Playerset', '2024-04-22', 'Players');
+      var scheduleRef = doc(db, 'Schedule', getFormattedDate(today));
+      var scheduleSnapshot = await getDoc(scheduleRef)
+      var starttime = scheduleSnapshot.data()!['starttime']
+      var endtime = scheduleSnapshot.data()!['endtime']
+      var now = getEasternTime()
+      var start = firestoreTimestampToDate(starttime)
+      var end = firestoreTimestampToDate(endtime)
+      var ref = collection(db, 'Playerset', getFormattedDate(today), 'Players');
+      console.log(now)
+      console.log(start)
+      console.log(end)
+      if (now < start) {
+        console.log('Before start time')
+        setIsOpen(true)
+      } else if (now > start && now < end) {
+        console.log('Live period')
+        setIsOpen(false)
+      } else {
+        console.log('After end time')
+        setIsOpen(true)
+        var tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        setToday(tomorrow)
+        scheduleRef = doc(db, 'Schedule', getFormattedDate(tomorrow));
+        scheduleSnapshot = await getDoc(scheduleRef)
+        starttime = scheduleSnapshot.data()!['starttime']
+        endtime = scheduleSnapshot.data()!['endtime']
+        ref = collection(db, 'Playerset', getFormattedDate(tomorrow), 'Players');
+        now = getEasternTime()
+        start = firestoreTimestampToDate(starttime)
+        end = firestoreTimestampToDate(endtime)
+      }
+      setStartTime(start)
+      setEndTime(end)
       try {
         const querySnapshot = await getDocs(ref);
         const items = querySnapshot.docs.map(doc => ({
@@ -160,9 +205,10 @@ const App: React.FC = () => {
           p_throws: doc.data().p_throws,
           pitcherId: doc.data().pitcher,
           pitcherAbr: doc.data().pitcher_abr,
-          pitcherName: doc.data().pitcher_name
+          pitcherName: doc.data().pitcher_name,
+          isSelected: false
         }));
-        setData(items.sort((a, b) => b.hr_2024 - a.hr_2024));
+        setData(items.sort((a, b) => b.hr_2024 - a.hr_2024 || b.batterAbr.localeCompare(a.batterAbr)));
       } catch (error) {
         console.error("Error fetching documents:", error);
       }
@@ -189,26 +235,26 @@ const App: React.FC = () => {
     }
   };
 
-  const handleItemSelect = (item_id: string) => {
-    // Toggle selection of items
-    setSelectedItems(prevSelectedItems => {
-      if (prevSelectedItems.includes(item_id)) {
-        // Item is already selected, so remove it
-        return prevSelectedItems.filter(id => id !== item_id);
-      } else {
-        // Item is not selected, so add it
-        return [...prevSelectedItems, item_id];
-      }
-    });
-  };
 
-  const handlePlayerSubmit = () => {
-    const currentDate = new Date().toISOString().split('T')[0];
-    const dataToUpdate: { [key: string]: any } = {};
-    dataToUpdate[currentDate] = selectedItems;
-    // Toggle selection of items
-    updateDoc(doc(db, "UserData", auth.currentUser!.uid,), dataToUpdate)
-  };
+
+  interface ViewProps {
+    setMainContent: (view: string) => void;
+    setSelections: React.Dispatch<React.SetStateAction<string[]>>;
+    setPlayers: React.Dispatch<React.SetStateAction<MatchupData[]>>;
+    players: MatchupData[];
+    selectedIds: string[];
+    today: Date;
+  }
+
+  let MainContent: React.FC<ViewProps> = PicksView;
+  switch (mainContent) {
+    case 'Picks':
+      MainContent = PicksView;
+      break;
+    case 'Results':
+      MainContent = ResultsView;
+      break;
+  }
 
   return (
     <Fragment>
@@ -223,122 +269,30 @@ const App: React.FC = () => {
                     style={styles.image}
                   />
                 </View>
-                {auth.currentUser == null && <TouchableOpacity
-                  style={[{
-                    backgroundColor: 'white', paddingHorizontal: 15,
-                    paddingVertical: 8,
-                    marginTop: 9,
-                    borderRadius: 6,
-                  }, styles.endButton]}
-                  onPress={() =>
-                    setAuthModalVisible(true)
-                  }
-                >
-                  <LoginRegisterModal visible={AuthModalVisible} onClose={() => setAuthModalVisible(false)} />
-                  <Text style={{ color: '#04143C' }}>Login</Text>
-                </TouchableOpacity>}
-                {auth.currentUser != null && userData != null && <TouchableOpacity onPress={() => setProfileModalVisible(true)} style={styles.endButton}>
-                  <ProfileModal visible={ProfileModalVisible} onClose={() => setProfileModalVisible(false)} name={userData.name} />
-                  <FontAwesome name="user" size={30} color="white" />
-                </TouchableOpacity>}
-              </View>
-              {data.length == 0 && <View style={{ height: 1000 }}>
-
-              </View>}
-              {data.length != 0 && <Animated.View
-                key={'uniqueKey'}
-                entering={FadeIn.duration(400)}
-                exiting={FadeOut.duration(400)}>
-                <View style={[styles.mainContent, { width: isMobile ? width - 30 : width / 2 },]}>
-                  <View style={styles.titleBar}>
-                    <Text style={{ fontSize: isMobile ? 24 : 32, marginBottom: 4 }} >Today's Picks ({today.getMonth() + 1}-{today.getDate()}-{today.getFullYear()})</Text>
-                    <TouchableOpacity onPress={() => setHelpModalVisible(true)}>
-                      <Ionicons name="help-circle-sharp" size={30} color="#04143C" />
-                    </TouchableOpacity>
-                    <HelpModal visible={helpModalVisible} onClose={() => setHelpModalVisible(false)} isMobile={isMobile} />
-                  </View>
-                  <View style={{ flex: 1, flexDirection: 'row' }}>
-                    <Text style={{ fontSize: isMobile ? 16 : 20, marginBottom: 4, marginLeft: 8, }} >Selections Remaining: </Text>
-                    <Text style={{ fontSize: isMobile ? 16 : 20, color: 'cornflowerblue', fontWeight: 'bold' }} >{10 - selectedItems.length}</Text>
-                  </View>
-                  <View style={styles.tabBar}>
-                    <TouchableOpacity
-                      style={[selectedTab == '2024' ? styles.selectedTab : styles.unselectedTab, { paddingHorizontal: isMobile ? 12 : 18, }]}
-                      onPress={() => {
-                        setData(data.slice().sort((a, b) => b.hr_2024 - a.hr_2024))
-                        setSelectedTab('2024')
-                      }}>
-                      <Text style={{ color: selectedTab == '2024' ? 'white' : '#04143C' }}>2024</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[selectedTab == '2023' ? styles.selectedTab : styles.unselectedTab, { paddingHorizontal: isMobile ? 12 : 18, }]}
-                      onPress={() => {
-                        setData(data.slice().sort((a, b) => b.hr_2023 - a.hr_2023))
-                        setSelectedTab('2023')
-                      }}>
-                      <Text style={{ color: selectedTab == '2023' ? 'white' : '#04143C' }}>2023</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[selectedTab == 'Last 10' ? styles.selectedTab : styles.unselectedTab, { paddingHorizontal: isMobile ? 12 : 18, }]}
-                      onPress={() => {
-                        setData(data.slice().sort((a, b) => b.hr_last10 - a.hr_last10))
-                        setSelectedTab('Last 10')
-                      }}>
-                      <Text style={{ color: selectedTab == 'Last 10' ? 'white' : '#04143C' }}>Last 10</Text>
-                    </TouchableOpacity>
-                    <View style={{ flex: 1, alignSelf: 'flex-end' }}>
-                      {selectedTab == '2024' && <Text style={{ alignSelf: 'flex-end', paddingBottom: 4, paddingRight: 4 }}>2024 Total Dongs:</Text>}
-                      {selectedTab == '2023' && <Text style={{ alignSelf: 'flex-end', paddingBottom: 4, paddingRight: 4 }}>2023 Total Dongs:</Text>}
-                      {selectedTab == 'Last 10' && <Text style={{ alignSelf: 'flex-end', paddingBottom: 4, paddingRight: 4 }}>Last 10 Days Dongs:</Text>}
-                    </View>
-                  </View>
-                  <View style={styles.list}>
-                    {
-                      data.slice(0, visibleCount).map((item, index) => (
-                        <ListItem
-                          key={item.id}
-                          player={item}
-                          isLast={index === visibleCount - 1 || index === data.length - 1}
-                          isFirst={index === 0}
-                          selectionCount={selectedItems.length}
-                          selectedTab={selectedTab}
-                          onItemSelect={() => handleItemSelect(item.id)}
-                        />
-                      ))
-                    }
-                  </View>
-                  <View style={{
-                    marginTop: 0,
-                    flex: 1,
-                    justifyContent: 'center',
-                    alignItems: 'flex-start',
-                    flexDirection: 'row',
-                  }}>
-                    {visibleCount < data.length && <TouchableOpacity
-                      style={styles.bottomTab}
-                      onPress={() => setVisibleCount(visibleCount + 10)}
-                    >
-                      <Text style={{ color: 'white', alignSelf: 'center' }}>Load More</Text>
-                    </TouchableOpacity>}
-                  </View>
-                  <TouchableOpacity
-                    style={[{ backgroundColor: !hideButtons ? '#04143C' : 'lightgrey' }, styles.submitButton]}
-                    onPress={() => {
-                      if (!hideButtons) {
-                        if (auth.currentUser == null) {
-                          setAuthModalVisible(true)
-                        } else {
-                          handlePlayerSubmit()
-                        }
-                      }
-                    }
+                {isOpen && endTime != null && startTime != null && <CountdownTimer targetTime={startTime!} isOpen={isOpen} />}
+                {!isOpen && endTime != null && startTime != null && <CountdownTimer targetTime={endTime!} isOpen={isOpen} />}
+                <View style={{ width: 110 }}>
+                  {auth.currentUser == null && <TouchableOpacity
+                    style={[{
+                      backgroundColor: 'white', paddingHorizontal: 15,
+                      paddingVertical: 8,
+                      marginTop: 9,
+                      borderRadius: 6,
+                    }, styles.endButton]}
+                    onPress={() =>
+                      setAuthModalVisible(true)
                     }
                   >
                     <LoginRegisterModal visible={AuthModalVisible} onClose={() => setAuthModalVisible(false)} />
-                    <Text style={{ color: 'white' }}>Submit</Text>
-                  </TouchableOpacity>
+                    <Text style={{ color: '#04143C' }}>Login</Text>
+                  </TouchableOpacity>}
+                  {auth.currentUser != null && userData != null && <TouchableOpacity onPress={() => setProfileModalVisible(true)} style={styles.endButton}>
+                    <ProfileModal visible={ProfileModalVisible} onClose={() => setProfileModalVisible(false)} name={userData.name} />
+                    <FontAwesome name="user" size={30} color="white" />
+                  </TouchableOpacity>}
                 </View>
-              </Animated.View>}
+              </View>
+              <MainContent setMainContent={setMainContent} setSelections={setSelectedItems} setPlayers={setData} selectedIds={selectedItems} players={data} today={today} />
             </View>
           </SafeAreaView>
         </ScrollView>
@@ -391,10 +345,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#04143C'
   },
   header: {
-    height: 85,
     width: '100%',
+    flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center', // Center items vertically
+    justifyContent: 'space-between',
     backgroundColor: '#04143C',
   },
   borderBottom: {
@@ -462,9 +417,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   imageContainer: {
-    position: 'absolute',
-    top: 4, // Adjust the top position as needed
-    left: 8, // Adjust the left position as needed
+    paddingTop: 4, // Adjust the top position as needed
+    paddingLeft: 8, // Adjust the left position as needed
   },
   image: {
     width: 130, // Adjust the width as needed
@@ -512,9 +466,8 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   endButton: {
-    alignSelf: 'flex-end',
-    justifyContent: 'center',
-    marginHorizontal: 20
+    marginHorizontal: 20,
+    alignSelf: 'flex-end'
   }
 })
 

@@ -42,8 +42,12 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ visible, onClose, name }) =
     };
 
     const handleLogout = async () => {
-        await signOut(auth);
-        handleClose();
+        try {
+            signOut(auth).then(() => console.log('User signed out!'));
+            handleClose();
+        } catch (error) {
+            console.error('Error signing out', error)
+        }
     }
 
     const handleError = (message: string) => {
